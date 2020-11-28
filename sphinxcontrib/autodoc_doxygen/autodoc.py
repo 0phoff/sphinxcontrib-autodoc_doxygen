@@ -12,7 +12,6 @@ from .xmlutils import format_xml_paragraph
 class DoxygenDocumenter(Documenter):
     # Variables to store the names of the object being documented. modname and fullname are redundant,
     # and objpath is always the empty list. This is inelegant, but we need to work with the superclass.
-
     fullname = None  # example: "OpenMM::NonbondedForce" or "OpenMM::NonbondedForce::methodName""
     modname = None   # example: "OpenMM::NonbondedForce" or "OpenMM::NonbondedForce::methodName""
     objname = None   # example: "NonbondedForce"  or "methodName"
@@ -118,7 +117,6 @@ class DoxygenDocumenter(Documenter):
         return brief
 
 
-
 class DoxygenClassDocumenter(DoxygenDocumenter):
     objtype = 'doxyclass'
     directivetype = 'class'
@@ -137,19 +135,20 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
         # members. Currently not implemented since we don't have a higher-level
         # doumenter like a DoxygenNamespaceDocumenter.
         return False
-
+    
     def import_object(self):
         """Import the object and set it as *self.object*.  In the call sequence, this
         is executed right after parse_name(), so it can use *self.fullname*, *self.objname*,
         and *self.modname*.
-
         Returns True if successful, False if an error occurred.
         """
         xpath_query = './/compoundname[text()="%s"]/..' % self.fullname
         match = get_doxygen_root().xpath(xpath_query)
         if len(match) != 1:
-            raise ExtensionError('[autodoc_doxygen] could not find class (fullname="%s"). I tried'
-                                 'the following xpath: "%s"' % (self.fullname, xpath_query))
+            raise ExtensionError(
+                '[autodoc_doxygen] could not find class (fullname="%s"). I tried the following xpath: "%s"'
+                % (self.fullname, xpath_query)
+            )
 
         self.object = match[0]
         return True
@@ -179,17 +178,13 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
             ret.append((membername, member, False))
         return ret
 
-    def document_members(self, all_members=False):
-        super(DoxygenClassDocumenter, self).document_members(all_members=all_members)
-        # Uncomment to view the generated rst for the class.
-        # print('\n'.join(self.directive.result))
-
 
 class DoxygenMethodDocumenter(DoxygenDocumenter):
     objtype = 'doxymethod'
     directivetype = 'function'
     domain = 'cpp'
     priority = 100
+    xpath_query = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func"]/memberdef[@kind="function"]/name[text()="%s"]/..'
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
@@ -215,12 +210,12 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             # classname or method name
             return True
 
-        xpath_query = ('.//compoundname[text()="%s"]/../sectiondef[@kind="public-func"]'
-                       '/memberdef[@kind="function"]/name[text()="%s"]/..') % tuple(self.fullname.rsplit('::', 1))
-        match = get_doxygen_root().xpath(xpath_query)
+        match = get_doxygen_root().xpath(self.xpath_query % tuple(self.fullname.rsplit('::', 1)))
         if len(match) == 0:
-            raise ExtensionError('[autodoc_doxygen] could not find method (modname="%s", objname="%s"). I tried '
-                                 'the following xpath: "%s"' % (tuple(self.fullname.rsplit('::', 1)) + (xpath_query,)))
+            raise ExtensionError(
+                '[autodoc_doxygen] could not find %s (modname="%s", objname="%s"). I tried the following xpath: "%s"'
+                % ((self.objtype,) + tuple(self.fullname.rsplit('::', 1)) + (xpath_query,))
+            )
         self.object = match[0]
         return True
 
@@ -257,3 +252,11 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
     def document_members(self, all_members=False):
         pass
+
+
+class DoxygenFunctionDocumenter(DoxygenMethodDocumenter):
+    objtype = 'doxyfunction'
+    directivetype = 'function'
+    domain = 'cpp'
+    priority = 100
+    xpath_query = './/compoundname[text()="%s"]/../sectiondef[@kind="func"]/memberdef[@kind="function"]/name[text()="%s"]/..'
