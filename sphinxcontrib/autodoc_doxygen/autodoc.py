@@ -1,12 +1,22 @@
 from __future__ import print_function, absolute_import, division
 
+import re
 from six import itervalues
 from lxml import etree as ET
 from sphinx.ext.autodoc import Documenter, members_option, ALL
 from sphinx.errors import ExtensionError
+from docutils.parsers.rst.directives import flag
 
-from . import get_doxygen_root
+from . import get_doxygen_root, get_auto_defaults
 from .xmlutils import format_xml_paragraph
+
+
+def text(el):
+    return el.text if el.text is not None else ''
+
+
+def tail(el):
+    return el.tail if el.tail is not None else ''
 
 
 class DoxygenDocumenter(Documenter):
@@ -123,10 +133,6 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
     domain = 'cpp'
     priority = 100
 
-    option_spec = {
-        'members': members_option,
-    }
-
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
         # this method is only called from Documenter.document_members
@@ -184,7 +190,13 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
     directivetype = 'function'
     domain = 'cpp'
     priority = 100
-    xpath_query = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func"]/memberdef[@kind="function"]/name[text()="%s"]/..'
+    xpath_base = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func"]/memberdef[@kind="function"]'
+    option_spec = {
+        'members': members_option,
+        'return': str,
+        'args': str,
+        'defaults': flag,
+    }
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
@@ -203,6 +215,10 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             self.object = match
         return False
 
+    def prep_user_options(self, value):
+        # Add space between < >
+        return re.sub(r'<([^ <>])', r'< \1', re.sub(r'([^ <>])>', r'\1 >', value))
+
     def import_object(self):
         if ET.iselement(self.object):
             # self.object already set from DoxygenDocumenter.parse_name(),
@@ -210,26 +226,28 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             # classname or method name
             return True
 
-        match = get_doxygen_root().xpath(self.xpath_query % tuple(self.fullname.rsplit('::', 1)))
+        compound, method = self.fullname.rsplit('::', 1)
+        if {'return', 'args'} <= self.directive.genopt.keys():
+            ret = self.prep_user_options(self.directive.genopt['return'])
+            args = self.prep_user_options(self.directive.genopt['args'])
+            xpath_query = (self.xpath_base + '[definition[text()="%s %s"] and argsstring[text()="(%s)"]]') % (compound, ret, method, args)
+        elif 'return' in self.directive.genopt.keys():
+            ret = self.prep_user_options(self.directive.genopt['return'])
+            xpath_query = (self.xpath_base + '[definition[text()="%s %s"]]') % (compound, ret, method)
+        elif 'args' in self.directive.genopt.keys():
+            args = self.prep_user_options(self.directive.genopt['args'])
+            xpath_query = (self.xpath_base + '[argsstring[text()="(%s)"]]') % (compound, args)
+        else:
+            xpath_query = (self.xpath_base + '[name[text()="%s"]]') % (compound, method)
+
+        match = get_doxygen_root().xpath(xpath_query)
         if len(match) == 0:
-            raise ExtensionError(
-                '[autodoc_doxygen] could not find %s (modname="%s", objname="%s"). I tried the following xpath: "%s"'
-                % ((self.objtype,) + tuple(self.fullname.rsplit('::', 1)) + (xpath_query,))
-            )
+            raise ExtensionError('[autodoc_doxygen] could not find %s: %s. I tried following query:\n%s' % (self.objtype, self.fullname, xpath_query))
+
         self.object = match[0]
         return True
 
     def format_name(self):
-        def text(el):
-            if el.text is not None:
-                return el.text
-            return ''
-
-        def tail(el):
-            if el.tail is not None:
-                return el.tail
-            return ''
-
         rtype_el = self.object.find('type')
         rtype_el_ref = rtype_el.find('ref')
         if rtype_el_ref is not None:
@@ -247,8 +265,32 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         return 'template <%s>\n' % ','.join(types)
 
     def format_signature(self):
-        args = self.object.find('argsstring').text
-        return args
+        auto_defaults = get_auto_defaults()
+        defaults = 'defaults' in self.directive.genopt
+
+        if auto_defaults != defaults:
+            params = self.object.findall('param')
+
+            result = ''
+            for p in params:
+                type = p.find('type')
+                type_ref = type.find('ref')
+                declname = p.findtext('declname')
+                defval = p.findtext('defval')
+
+                if type_ref is not None:
+                    result += text(type) + text(type_ref) + tail(type_ref)
+                else:
+                    result += type.text
+                if declname:
+                    result += ' ' + declname
+                if defval:
+                    result += ' = ' + defval
+                result += ', '
+
+            return '(' + result[:-2] + ')'
+        else:
+            return self.object.find('argsstring').text
 
     def document_members(self, all_members=False):
         pass
@@ -259,4 +301,9 @@ class DoxygenFunctionDocumenter(DoxygenMethodDocumenter):
     directivetype = 'function'
     domain = 'cpp'
     priority = 100
-    xpath_query = './/compoundname[text()="%s"]/../sectiondef[@kind="func"]/memberdef[@kind="function"]/name[text()="%s"]/..'
+    xpath_base = './/compoundname[text()="%s"]/../sectiondef[@kind="func"]/memberdef[@kind="function"]'
+    option_spec = {
+        'return': str,
+        'args': str,
+        'defaults': flag,
+    }

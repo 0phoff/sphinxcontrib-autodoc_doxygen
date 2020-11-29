@@ -21,6 +21,7 @@ def set_doxygen_xml(app):
     if len(files) == 0:
         raise err
 
+    setup.AUTO_DEFAULTS = app.config.doxygen_defaults
     setup.DOXYGEN_ROOT = ET.ElementTree(ET.Element('root')).getroot()
     for file in files:
         root = ET.parse(file).getroot()
@@ -34,6 +35,10 @@ def get_doxygen_root():
     if not hasattr(setup, 'DOXYGEN_ROOT'):
         setup.DOXYGEN_ROOT = ET.Element("root")  # dummy
     return setup.DOXYGEN_ROOT
+
+
+def get_auto_defaults():
+    return setup.AUTO_DEFAULTS
 
 
 def setup(app):
@@ -52,6 +57,7 @@ def setup(app):
     app.add_autodocumenter(DoxygenMethodDocumenter)
     app.add_autodocumenter(DoxygenFunctionDocumenter)
     app.add_config_value("doxygen_xml", "", True)
+    app.add_config_value("doxygen_defaults", False, True)
 
     app.add_directive('autodoxysummary', DoxygenAutosummary)
     app.add_directive('autodoxyenum', DoxygenAutoEnum)
