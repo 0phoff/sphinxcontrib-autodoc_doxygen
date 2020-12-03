@@ -34,7 +34,7 @@ def import_by_name(name, env=None, prefixes=None, i=0):
     if env is not None:
         parents = env.ref_context.get('cpp:parent_key')
         if parents is not None:
-            parent_symbols = [p[0].get_display_string() for p in parents]
+            parent_symbols = [p[0].get_display_string() for p in parents.data]
             prefixes.append('::'.join(parent_symbols))
 
     tried = []
@@ -58,8 +58,9 @@ def _import_by_name(name, i=0):
     if '::' in name:
         xpath_query = (
             './/compoundname[text()="%s"]/../'
-            'sectiondef[@kind="public-func"]/memberdef[@kind="function"]/'
-            'name[text()="%s"]/..') % tuple(name.rsplit('::', 1))
+            'sectiondef[@kind="public-func" or @kind="public-static-func"]/memberdef[@kind="function"]/'
+            'name[text()="%s"]/..'
+        ) % tuple(name.rsplit('::', 1))
         m = root.xpath(xpath_query)
         if len(m) > 0:
             obj = m[i]
@@ -68,8 +69,9 @@ def _import_by_name(name, i=0):
 
         xpath_query = (
             './/compoundname[text()="%s"]/../'
-            'sectiondef[@kind="public-type"]/memberdef[@kind="enum"]/'
-            'name[text()="%s"]/..') % tuple(name.rsplit('::', 1))
+            'sectiondef[@kind="public-type" or @kind="public-static-func"]/memberdef[@kind="enum"]/'
+            'name[text()="%s"]/..'
+        ) % tuple(name.rsplit('::', 1))
         m = root.xpath(xpath_query)
         if len(m) > 0:
             obj = m[i]
@@ -161,8 +163,8 @@ class DoxygenAutosummary(Autosummary):
 
             try:
                 real_name, obj, parent, modname = import_by_name(name, env=env, i=i)
-            except ImportError:
-                logger.warning('failed to import %s' % name)
+            except ImportError as err:
+                logger.warning('failed to import %s. [%s]' % (name, str(err)))
                 items.append((name, '', '', name))
                 continue
 

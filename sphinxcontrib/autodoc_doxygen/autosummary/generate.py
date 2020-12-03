@@ -81,6 +81,7 @@ def generate_autosummary_docs(sources, output_dir=None, suffix='.rst',
             ns = {}
             if obj.tag == 'compounddef' and obj.get('kind') == 'class':
                 ns['methods'] = [e.text for e in obj.findall('.//sectiondef[@kind="public-func"]/memberdef[@kind="function"]/name')]
+                ns['statics'] = [e.text for e in obj.findall('.//sectiondef[@kind="public-static-func"]/memberdef[@kind="function"]/name')]
                 ns['enums'] = [e.text for e in obj.findall('.//sectiondef[@kind="public-type"]/memberdef[@kind="enum"]/name')]
                 ns['objtype'] = 'class'
             else:
