@@ -2,6 +2,14 @@ from __future__ import print_function, absolute_import, division
 from . import get_doxygen_root
 
 
+def text(el):
+    return el.text if el.text is not None else ''
+
+
+def tail(el):
+    return el.tail if el.tail is not None else ''
+
+
 def format_xml_paragraph(xmlnode):
     """Format an Doxygen XML segment (principally a detaileddescription)
     as a paragraph for inclusion in the rst document

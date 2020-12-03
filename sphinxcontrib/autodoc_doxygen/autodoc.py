@@ -8,16 +8,10 @@ from sphinx.errors import ExtensionError
 from docutils.parsers.rst.directives import flag
 
 from . import get_doxygen_root, get_auto_defaults
-from .xmlutils import format_xml_paragraph
+from .xmlutils import format_xml_paragraph, text, tail
 
-
-def text(el):
-    return el.text if el.text is not None else ''
-
-
-def tail(el):
-    return el.tail if el.tail is not None else ''
-
+# Add regular expressions to xpath
+ET.FunctionNamespace("http://exslt.org/regular-expressions").prefix = 're'
 
 class DoxygenDocumenter(Documenter):
     # Variables to store the names of the object being documented. modname and fullname are redundant,
@@ -166,8 +160,10 @@ class DoxygenClassDocumenter(DoxygenDocumenter):
         return self.fullname
 
     def get_object_members(self, want_all):
-        all_members = self.object.xpath('.//sectiondef[@kind="public-func" '
-            'or @kind="public-static-func"]/memberdef[@kind="function"]')
+        all_members = self.object.xpath(
+            './/sectiondef[@kind="public-func" '
+            'or @kind="public-static-func"]/memberdef[@kind="function"]'
+        )
 
         if want_all:
             return False, ((m.find('name').text, m) for m in all_members)
@@ -190,13 +186,19 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
     directivetype = 'function'
     domain = 'cpp'
     priority = 100
-    xpath_base = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func"]/memberdef[@kind="function"]'
+    xpath_base = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func" or @kind="public-static-func"]/memberdef[@kind="function"]'
     option_spec = {
         'members': members_option,
         'return': str,
         'args': str,
         'defaults': flag,
     }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.re_angle_open = (re.compile(r'<([^ <>])'), r'< \1')
+        self.re_angle_close = (re.compile(r'([^ <>])>'), r'\1 >')
+        self.re_split_args = re.compile(",(?![^<>]*>)")
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
@@ -215,10 +217,6 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             self.object = match
         return False
 
-    def prep_user_options(self, value):
-        # Add space between < >
-        return re.sub(r'<([^ <>])', r'< \1', re.sub(r'([^ <>])>', r'\1 >', value))
-
     def import_object(self):
         if ET.iselement(self.object):
             # self.object already set from DoxygenDocumenter.parse_name(),
@@ -228,34 +226,74 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
         compound, method = self.fullname.rsplit('::', 1)
         if {'return', 'args'} <= self.directive.genopt.keys():
-            ret = self.prep_user_options(self.directive.genopt['return'])
-            args = self.prep_user_options(self.directive.genopt['args'])
-            xpath_query = (self.xpath_base + '[definition[text()="%s %s"] and argsstring[text()="(%s)"]]') % (compound, ret, method, args)
+            ret = self.re_angle_open[0].sub(
+                self.re_angle_open[1],
+                self.re_angle_close[0].sub(
+                    self.re_angle_close[1],
+                    self.directive.genopt['return']
+                )
+            )
+            args = self.re_angle_open[0].sub(
+                self.re_angle_open[1],
+                self.re_angle_close[0].sub(
+                    self.re_angle_close[1],
+                    self.directive.genopt['args']
+                )
+            )
+            args = '.*,'.join(self.re_split_args.split(args))
+
+            xpath_query = (
+                self.xpath_base +
+                '[definition[text()="%s %s::%s"] and re:test(argsstring/text(), "(%s)")]'
+            ) % (compound, ret, compound, method, args)
         elif 'return' in self.directive.genopt.keys():
-            ret = self.prep_user_options(self.directive.genopt['return'])
-            xpath_query = (self.xpath_base + '[definition[text()="%s %s"]]') % (compound, ret, method)
+            ret = self.re_angle_open[0].sub(
+                self.re_angle_open[1],
+                self.re_angle_close[0].sub(
+                    self.re_angle_close[1],
+                    self.directive.genopt['return']
+                )
+            )
+            xpath_query = (
+                self.xpath_base +
+                '[definition/text()="%s %s::%s"]'
+            ) % (compound, ret, compound, method)
         elif 'args' in self.directive.genopt.keys():
-            args = self.prep_user_options(self.directive.genopt['args'])
-            xpath_query = (self.xpath_base + '[argsstring[text()="(%s)"]]') % (compound, args)
+            args = self.re_angle_open[0].sub(
+                self.re_angle_open[1],
+                self.re_angle_close[0].sub(
+                    self.re_angle_close[1],
+                    self.directive.genopt['args']
+                )
+            )
+            args = '.*,'.join(self.re_split_args.split(args))
+            xpath_query = (
+                self.xpath_base +
+                '[name[text()="%s"] and re:test(argsstring/text(), "(%s)")]'
+            ) % (compound, method, args)
         else:
-            xpath_query = (self.xpath_base + '[name[text()="%s"]]') % (compound, method)
+            xpath_query = (
+                self.xpath_base +
+                '[name[text()="%s"]]'
+            ) % (compound, method)
 
         match = get_doxygen_root().xpath(xpath_query)
         if len(match) == 0:
             raise ExtensionError('[autodoc_doxygen] could not find %s: %s. I tried following query:\n%s' % (self.objtype, self.fullname, xpath_query))
-
         self.object = match[0]
+
         return True
 
     def format_name(self):
         rtype_el = self.object.find('type')
         rtype_el_ref = rtype_el.find('ref')
         if rtype_el_ref is not None:
-            rtype = text(rtype_el) + text(rtype_el_ref) + tail(rtype_el_ref)
+            rtype = text(rtype_el) + text(rtype_el_ref) + tail(rtype_el_ref) + ' '
         else:
-            rtype = rtype_el.text
+            rtype = rtype_el.text + ' ' if rtype_el.text else ''
 
-        signame = (rtype and (rtype + ' ') or '') + self.objname
+        static = 'static ' if self.object.getparent().get('kind') == 'public-static-func' else ''
+        signame = static + rtype + self.objname
         return self.format_template_name() + signame
 
     def format_template_name(self):
@@ -267,30 +305,26 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
     def format_signature(self):
         auto_defaults = get_auto_defaults()
         defaults = 'defaults' in self.directive.genopt
-
-        if auto_defaults != defaults:
-            params = self.object.findall('param')
-
-            result = ''
-            for p in params:
-                type = p.find('type')
-                type_ref = type.find('ref')
-                declname = p.findtext('declname')
-                defval = p.findtext('defval')
-
-                if type_ref is not None:
-                    result += text(type) + text(type_ref) + tail(type_ref)
-                else:
-                    result += type.text
-                if declname:
-                    result += ' ' + declname
-                if defval:
-                    result += ' = ' + defval
-                result += ', '
-
-            return '(' + result[:-2] + ')'
-        else:
-            return self.object.find('argsstring').text
+        params = self.object.findall('param')
+        
+        result = ''
+        for p in params:
+            type = p.find('type')
+            type_ref = type.find('ref')
+            declname = p.findtext('declname')
+            defval = p.findtext('defval')
+        
+            if type_ref is not None:
+                result += text(type) + text(type_ref) + tail(type_ref)
+            else:
+                result += type.text
+            if declname:
+                result += ' ' + declname
+            if (defaults != auto_defaults) and defval:
+                result += ' = ' + defval
+            result += ', '
+        
+        return '(' + result[:-2] + ')'
 
     def document_members(self, all_members=False):
         pass
