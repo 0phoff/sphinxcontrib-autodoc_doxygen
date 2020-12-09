@@ -190,6 +190,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         'return': str,
         'args': str,
         'defaults': flag,
+        'fullname': flag,
     }
 
     def __init__(self, *args, **kwargs):
@@ -291,7 +292,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             rtype = rtype_el.text + ' ' if rtype_el.text else ''
 
         static = 'static ' if self.object.getparent().get('kind') == 'public-static-func' else ''
-        signame = static + rtype + self.objname
+        signame = static + rtype + self.fullname if 'fullname' in self.directive.genopt else self.objname
         return self.format_template_name() + signame
 
     def format_template_name(self):
