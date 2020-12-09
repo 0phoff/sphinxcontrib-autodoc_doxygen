@@ -17,7 +17,7 @@ from sphinx.util.matching import Matcher
 from sphinx.locale import __
 
 from .. import get_doxygen_root
-from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter
+from ..autodoc import DoxygenMethodDocumenter, DoxygenClassDocumenter, DoxygenFunctionDocumenter
 from ..xmlutils import format_xml_paragraph
 
 logger = logging.getLogger(__name__)
@@ -56,10 +56,10 @@ def _import_by_name(name, i=0):
     name = name.replace('.', '::')
 
     if '::' in name:
+        # Functions
         xpath_query = (
-            './/compoundname[text()="%s"]/../'
-            'sectiondef[@kind="public-func" or @kind="public-static-func"]/memberdef[@kind="function"]/'
-            'name[text()="%s"]/..'
+            './/compoundname[text()="%s"]/..'
+            '/sectiondef[@kind="func"]/memberdef[@kind="function" and name[text()="%s"]]'
         ) % tuple(name.rsplit('::', 1))
         m = root.xpath(xpath_query)
         if len(m) > 0:
@@ -67,10 +67,21 @@ def _import_by_name(name, i=0):
             full_name = '.'.join(name.rsplit('::', 1))
             return full_name, obj, full_name, ''
 
+        # Methods
         xpath_query = (
             './/compoundname[text()="%s"]/../'
-            'sectiondef[@kind="public-type" or @kind="public-static-func"]/memberdef[@kind="enum"]/'
-            'name[text()="%s"]/..'
+            'sectiondef[@kind="public-func" or @kind="public-static-func"]/memberdef[@kind="function" and name[text()="%s"]]'
+        ) % tuple(name.rsplit('::', 1))
+        m = root.xpath(xpath_query)
+        if len(m) > 0:
+            obj = m[i]
+            full_name = '.'.join(name.rsplit('::', 1))
+            return full_name, obj, full_name, ''
+
+        # Enum
+        xpath_query = (
+            './/compoundname[text()="%s"]/../'
+            'sectiondef[@kind="public-type" or @kind="public-static-func"]/memberdef[@kind="enum" and name[text()="%s"]]'
         ) % tuple(name.rsplit('::', 1))
         m = root.xpath(xpath_query)
         if len(m) > 0:
@@ -89,7 +100,10 @@ def _import_by_name(name, i=0):
 
 def get_documenter(obj, full_name):
     if obj.tag == 'memberdef' and obj.get('kind') == 'function':
-        return DoxygenMethodDocumenter
+        if obj.getparent().get('kind') == 'func':
+            return DoxygenFunctionDocumenter
+        else:
+            return DoxygenMethodDocumenter
     elif obj.tag == 'compounddef':
         return DoxygenClassDocumenter
 

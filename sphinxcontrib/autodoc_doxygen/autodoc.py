@@ -200,7 +200,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
     @classmethod
     def can_document_member(cls, member, membername, isattr, parent):
-        if ET.iselement(member) and member.tag == 'memberdef' and member.get('kind') == 'function':
+        if isinstance(parent, DoxygenClassDocumenter) and ET.iselement(member) and member.tag == 'memberdef' and member.get('kind') == 'function':
             return True
         return False
 
@@ -339,6 +339,12 @@ class DoxygenFunctionDocumenter(DoxygenMethodDocumenter):
         'args': str,
         'defaults': flag,
     }
+
+    @classmethod
+    def can_document_member(cls, member, membername, isattr, parent):
+        if ET.iselement(member) and member.tag == 'memberdef' and member.get('kind') == 'function':
+            return True
+        return False
 
     def format_name(self):
         rtype_el = self.object.find('type')
