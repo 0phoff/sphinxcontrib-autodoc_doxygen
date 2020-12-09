@@ -1,5 +1,6 @@
 from __future__ import print_function, absolute_import, division
 from . import get_doxygen_root
+import re
 
 
 def text(el):
@@ -118,12 +119,22 @@ class _DoxygenXmlParagraphFormatter(object):
         lines = ''.join(segment).split('\n')
         self.lines.extend(('.. code-block:: C++', ''))
         self.lines.extend(['  ' + l for l in lines])
+        if node.tail is not None:
+            self.lines.append(node.tail)
 
     def visit_computeroutput(self, node):
         c = node.find('preformatted')
         if c is not None:
             return self.visit_preformatted(c)
-        return self.visit_preformatted(node)
+
+        parent = node.getparent()
+        prev = node.getprevious()
+        text = prev.tail if prev is not None else parent.text
+
+        if text and re.match(r'.*:[a-zA-Z]+:$', text):
+            self.lines[-1] += '`' + node.text + '`' + node.tail
+        else:
+            return self.visit_preformatted(node)
 
     def visit_xrefsect(self, node):
         if node.find('xreftitle').text == 'Deprecated':
