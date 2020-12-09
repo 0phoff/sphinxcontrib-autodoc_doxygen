@@ -14,10 +14,10 @@ from .xmlutils import format_xml_paragraph, text, tail
 ET.FunctionNamespace("http://exslt.org/regular-expressions").prefix = 're'
 
 class DoxygenDocumenter(Documenter):
-    # Variables to store the names of the object being documented. modname and fullname are redundant,
-    # and objpath is always the empty list. This is inelegant, but we need to work with the superclass.
+    # Variables to store the names of the object being documented.
+    # objpath is always the empty list. This is inelegant, but we need to work with the superclass.
     fullname = None  # example: "OpenMM::NonbondedForce" or "OpenMM::NonbondedForce::methodName""
-    modname = None   # example: "OpenMM::NonbondedForce" or "OpenMM::NonbondedForce::methodName""
+    modname = None   # example: "OpenMM" or "OpenMM::NonbondedForce""
     objname = None   # example: "NonbondedForce"  or "methodName"
     objpath = []     # always the empty list
     object = None    # the xml node for the object
@@ -48,14 +48,13 @@ class DoxygenDocumenter(Documenter):
         # names with method names, and we don't want that.
         self.name = self.name.replace('.', '::')
         self.fullname = self.name
-        self.modname = self.fullname
         self.objpath = []
 
         if '::' in self.name:
-            parts = self.name.split('::')
-            self.objname = parts[-1]
+            self.modname, self.objname = self.name.rsplit('::', 1)
         else:
             self.objname = self.name
+            self.modname = self.name
 
         return True
 
@@ -65,8 +64,8 @@ class DoxygenDocumenter(Documenter):
         directive = getattr(self, 'directivetype', self.objtype)
         name = self.format_name()
         sourcename = self.get_sourcename()
-        self.add_line(u'.. %s:%s:: %s%s' % (domain, directive, name, sig),
-                      sourcename)
+
+        self.add_line(u'.. %s:%s:: %s%s' % (domain, directive, name, sig), sourcename)
 
     def document_members(self, all_members=False):
         """Generate reST for member documentation.
@@ -188,7 +187,6 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
     priority = 100
     xpath_base = './/compoundname[text()="%s"]/../sectiondef[@kind="public-func" or @kind="public-static-func"]/memberdef[@kind="function"]'
     option_spec = {
-        'members': members_option,
         'return': str,
         'args': str,
         'defaults': flag,
@@ -212,7 +210,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
         if len(match) > 0:
             match = match[0]
             self.fullname = match.find('./definition').text.split()[-1]
-            self.modname = self.fullname
+            self.modname = self.fullname.rsplit('::', 1)[0]
             self.objname = match.find('./name').text
             self.object = match
         return False
@@ -341,3 +339,15 @@ class DoxygenFunctionDocumenter(DoxygenMethodDocumenter):
         'args': str,
         'defaults': flag,
     }
+
+    def format_name(self):
+        rtype_el = self.object.find('type')
+        rtype_el_ref = rtype_el.find('ref')
+        if rtype_el_ref is not None:
+            rtype = text(rtype_el) + text(rtype_el_ref) + tail(rtype_el_ref) + ' '
+        else:
+            rtype = rtype_el.text + ' ' if rtype_el.text else ''
+
+        static = 'static ' if self.object.getparent().get('kind') == 'public-static-func' else ''
+        signame = static + rtype + self.fullname
+        return self.format_template_name() + signame
