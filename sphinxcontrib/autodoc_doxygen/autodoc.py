@@ -224,19 +224,19 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             return True
 
         compound, method = self.fullname.rsplit('::', 1)
-        if {'return', 'args'} <= self.directive.genopt.keys():
+        if {'return', 'args'} <= self.options.keys():
             ret = self.re_angle_open[0].sub(
                 self.re_angle_open[1],
                 self.re_angle_close[0].sub(
                     self.re_angle_close[1],
-                    self.directive.genopt['return']
+                    self.options['return']
                 )
             )
             args = self.re_angle_open[0].sub(
                 self.re_angle_open[1],
                 self.re_angle_close[0].sub(
                     self.re_angle_close[1],
-                    self.directive.genopt['args']
+                    self.options['args']
                 )
             )
             args = '.*,'.join(self.re_split_args.split(args))
@@ -245,24 +245,24 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
                 self.xpath_base +
                 '[definition[text()="%s %s::%s"] and re:test(argsstring/text(), "(%s)")]'
             ) % (compound, ret, compound, method, args)
-        elif 'return' in self.directive.genopt.keys():
+        elif 'return' in self.options.keys():
             ret = self.re_angle_open[0].sub(
                 self.re_angle_open[1],
                 self.re_angle_close[0].sub(
                     self.re_angle_close[1],
-                    self.directive.genopt['return']
+                    self.options['return']
                 )
             )
             xpath_query = (
                 self.xpath_base +
                 '[definition/text()="%s %s::%s"]'
             ) % (compound, ret, compound, method)
-        elif 'args' in self.directive.genopt.keys():
+        elif 'args' in self.options.keys():
             args = self.re_angle_open[0].sub(
                 self.re_angle_open[1],
                 self.re_angle_close[0].sub(
                     self.re_angle_close[1],
-                    self.directive.genopt['args']
+                    self.options['args']
                 )
             )
             args = '.*,'.join(self.re_split_args.split(args))
@@ -292,7 +292,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
             rtype = rtype_el.text + ' ' if rtype_el.text else ''
 
         static = 'static ' if self.object.getparent().get('kind') == 'public-static-func' else ''
-        signame = static + rtype + self.fullname if 'fullname' in self.directive.genopt else self.objname
+        signame = static + rtype + self.fullname if 'fullname' in self.options else self.objname
         return self.format_template_name() + signame
 
     def format_template_name(self):
@@ -303,7 +303,7 @@ class DoxygenMethodDocumenter(DoxygenDocumenter):
 
     def format_signature(self):
         auto_defaults = get_auto_defaults()
-        defaults = 'defaults' in self.directive.genopt
+        defaults = 'defaults' in self.options
         params = self.object.findall('param')
         
         result = ''
